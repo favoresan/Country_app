@@ -1,12 +1,19 @@
+import 'package:country_app/domain/model/model.dart';
 import 'package:country_app/presentation/resources/color_manager.dart';
 import 'package:country_app/presentation/resources/font_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:modal_bottom_sheet/modal_bottom_sheet.dart';
-
+import '../../app/dependency_injection.dart';
+import '../../data/network/network_info.dart';
+import '../common/state_renderer/state_renderer_impl.dart';
+import '../resources/routes_manager.dart';
 import '../resources/strings_manager.dart';
 import '../resources/ui_parameters.dart';
 import '../resources/values_manager.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+
+import 'home_view_model.dart';
 
 class MainView extends StatefulWidget {
   const MainView({Key? key}) : super(key: key);
@@ -16,15 +23,25 @@ class MainView extends StatefulWidget {
 }
 
 class _MainViewState extends State<MainView> {
+  HomeViewModel _viewModel = instance<HomeViewModel>();
+  NetworkInfo _networkInfo = instance<NetworkInfo>();
+
+  @override
+  void initState() {
+    _bind();
+    _controller.addListener(() => _viewModel.setSearch(_controller.text));
+
+    super.initState();
+  }
+
+  _bind() async {
+    if (await _networkInfo.isConnected) {
+      _viewModel.start();
+    }
+  }
+
   TextEditingController _controller = TextEditingController();
 
-  bool checkedAfrica = true;
-  bool checkedAntarctica = false;
-  bool checkedAsia = false;
-  bool checkedAus = false;
-  bool checkedEurope = false;
-  bool checkedNorthA = false;
-  bool checkedSouthA = false;
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
@@ -81,7 +98,12 @@ class _MainViewState extends State<MainView> {
                         Expanded(
                           child: TextField(
                             textInputAction: TextInputAction.search,
-                            onSubmitted: (_) async {},
+                            onSubmitted: (_) async {
+                              if (_controller.text.length == 3) {
+                                _viewModel.search();
+                                _controller.clear();
+                              }
+                            },
                             controller: _controller,
                             enableSuggestions: true,
                             cursorColor: ColorManager.grey,
@@ -103,8 +125,7 @@ class _MainViewState extends State<MainView> {
                     child: GestureDetector(
                       onTap: () {
                         showMaterialModalBottomSheet(
-                          bounce: true,
-                          shape: RoundedRectangleBorder(
+                          shape: const RoundedRectangleBorder(
                             borderRadius: BorderRadius.all(
                               Radius.circular(
                                 AppSize.s12,
@@ -172,76 +193,21 @@ class _MainViewState extends State<MainView> {
                                           ?.copyWith(fontSize: FontSize.s16),
                                     ),
                                     children: [
-                                      checkedBoxTile('Africa', checkedAfrica),
-                                      checkedBoxTile(
-                                          'Antarctica', checkedAntarctica),
-                                      checkedBoxTile('Asia', checkedAsia),
-                                      checkedBoxTile('Australia', checkedAus),
-                                      checkedBoxTile('Europe', checkedEurope),
-                                      checkedBoxTile(
-                                          'North America', checkedNorthA),
-                                      checkedBoxTile(
-                                          'South America', checkedSouthA),
-                                      SizedBox(
-                                        height: AppSize.s20,
+                                      checkedBoxAfricaTile('Africa'),
+                                      checkedBoxAsiaTile(
+                                        'Asia',
                                       ),
-                                      Padding(
-                                        padding: EdgeInsets.symmetric(
-                                            horizontal: AppSize.s10),
-                                        child: Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            GestureDetector(
-                                              onTap: () {},
-                                              child: Container(
-                                                height: 40,
-                                                width: 70,
-                                                decoration: BoxDecoration(
-                                                    borderRadius:
-                                                        BorderRadius.all(
-                                                      Radius.circular(
-                                                        AppSize.s5,
-                                                      ),
-                                                    ),
-                                                    border: Border.all(
-                                                      color:
-                                                          customCheckBoxColor(
-                                                              context),
-                                                    )),
-                                                child: Center(
-                                                  child: Text(
-                                                    'Reset',
-                                                    style: Theme.of(context)
-                                                        .textTheme
-                                                        .titleMedium,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                            GestureDetector(
-                                              onTap: () {},
-                                              child: Container(
-                                                height: 40,
-                                                width: 180,
-                                                decoration: BoxDecoration(
-                                                  color: ColorManager.orange,
-                                                  borderRadius:
-                                                      BorderRadius.all(
-                                                    Radius.circular(
-                                                      AppSize.s5,
-                                                    ),
-                                                  ),
-                                                ),
-                                                child: Center(
-                                                  child: Text(
-                                                    'Show Result',
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
+                                      checkedBoxAussieTile(
+                                        'Australia',
+                                      ),
+                                      checkedBoxEuropeTile(
+                                        'Europe',
+                                      ),
+                                      checkedBoxNorthATile(
+                                        'North America',
+                                      ),
+                                      checkedBoxSouthATile(
+                                        'South America',
                                       ),
                                       SizedBox(
                                         height: AppSize.s40,
@@ -292,6 +258,21 @@ class _MainViewState extends State<MainView> {
                   SizedBox(
                     height: AppSize.s20,
                   ),
+                  Center(
+                    child: StreamBuilder<FlowState>(
+                      stream: _viewModel.outputState,
+                      builder: (context, snapshot) {
+                        return snapshot.data?.getScreenWidget(
+                              context,
+                              _getHomeWidget(),
+                              () {
+                                _viewModel.start();
+                              },
+                            ) ??
+                            Container();
+                      },
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -301,33 +282,192 @@ class _MainViewState extends State<MainView> {
     );
   }
 
-  CheckboxListTile checkedBoxTile(String continent, bool check) {
-    return CheckboxListTile(
-      checkColor: customScaffoldColor(context),
-      activeColor: customCheckBoxColor(context),
-      enableFeedback: false,
-      checkboxShape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.all(
-          Radius.circular(
-            AppSize.s5,
-          ),
-        ),
-      ),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.all(
-          Radius.circular(
-            AppSize.s5,
-          ),
-        ),
-      ),
-      title: Text(continent),
-      value: check,
-      onChanged: (newValue) {
-        setState(() {
-          check = newValue!;
-        });
+  ListTile checkedBoxAfricaTile(String continent) {
+    return ListTile(
+      onTap: () {
+        _viewModel.getAfrica();
+
+        Navigator.pop(context);
       },
-      controlAffinity: ListTileControlAffinity.trailing,
+      leading: Text(
+        continent,
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
     );
   }
+
+  ListTile checkedBoxAsiaTile(
+    String continent,
+  ) {
+    return ListTile(
+      onTap: () {
+        _viewModel.getAsia();
+        Navigator.pop(context);
+      },
+      leading: Text(
+        continent,
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
+    );
+  }
+
+  ListTile checkedBoxEuropeTile(
+    String continent,
+  ) {
+    return ListTile(
+      onTap: () {
+        _viewModel.getEurope();
+
+        Navigator.pop(context);
+      },
+      leading: Text(
+        continent,
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
+    );
+  }
+
+  ListTile checkedBoxNorthATile(
+    String continent,
+  ) {
+    return ListTile(
+      onTap: () {
+        _viewModel.getNorthA();
+
+        Navigator.pop(context);
+      },
+      leading: Text(
+        continent,
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
+    );
+  }
+
+  ListTile checkedBoxSouthATile(
+    String continent,
+  ) {
+    return ListTile(
+      onTap: () {
+        _viewModel.getSouthA();
+
+        Navigator.pop(context);
+      },
+      leading: Text(
+        continent,
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
+    );
+  }
+
+  ListTile checkedBoxAussieTile(
+    String continent,
+  ) {
+    return ListTile(
+      onTap: () {
+        _viewModel.getAustralia();
+        Navigator.pop(context);
+      },
+      leading: Text(
+        continent,
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
+    );
+  }
+
+  _getHomeWidget() {
+    return _allCountry();
+  }
+
+  Widget _allCountry() {
+    return StreamBuilder<List<AllCountryData>>(
+        stream: _viewModel.outputAllCountry,
+        builder: (context, snapshot) {
+          return _allCountryList(snapshot.data);
+        });
+  }
+
+  Widget _allCountryList(List<AllCountryData>? data) {
+    if (data != null) {
+      data.sort((a, b) =>
+          a.name!.common.toLowerCase().compareTo(b.name!.common.toLowerCase()));
+
+      print(data.length);
+
+      return ListView.builder(
+        itemCount: data.length,
+        physics: BouncingScrollPhysics(),
+        shrinkWrap: true,
+        scrollDirection: Axis.vertical,
+        itemBuilder: (context, index) {
+          final country = data[index];
+          return Column(
+            children: [
+              GestureDetector(
+                onTap: () {
+                  Navigator.pushNamed(context, Routes.descRoute,
+                      arguments: country);
+                },
+                child: SizedBox(
+                  height: 70,
+                  width: double.infinity,
+                  child: Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.all(
+                          Radius.circular(
+                            AppSize.s12,
+                          ),
+                        ),
+                        child: SizedBox(
+                          height: 50,
+                          width: 50,
+                          child: SvgPicture.network(
+                            country.flags!.svg,
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: 15,
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            country.name!.common,
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                          SizedBox(
+                            height: 10,
+                          ),
+                          if (country.capital.isNotEmpty)
+                            Text(
+                              country.capital.first,
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                        ],
+                      )
+                    ],
+                  ),
+                ),
+              ),
+              SizedBox(
+                height: AppSize.s20,
+              ),
+            ],
+          );
+        },
+      );
+    } else {
+      return Container();
+    }
+  }
+
+  // @override
+  // void dispose() {
+  //   _viewModel.dispose();
+  //   _controller.dispose();
+  //   super.dispose();
+  // }
 }
